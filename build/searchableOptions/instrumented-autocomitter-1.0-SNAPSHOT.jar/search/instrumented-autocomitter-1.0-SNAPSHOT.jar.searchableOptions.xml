@@ -1,0 +1,12 @@
+<options>
+  <configurable id="com.github.autocommiter.settings" configurable_name="Auto Commiter Settings">
+    <option name="auto" hit="Auto Commiter Settings" />
+    <option name="commiter" hit="Auto Commiter Settings" />
+    <option name="settings" hit="Auto Commiter Settings" />
+    <option name="and" hit="Enable auto commit and push" />
+    <option name="auto" hit="Enable auto commit and push" />
+    <option name="commit" hit="Enable auto commit and push" />
+    <option name="enable" hit="Enable auto commit and push" />
+    <option name="push" hit="Enable auto commit and push" />
+  </configurable>
+</options>
