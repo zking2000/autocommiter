@@ -1,7 +1,7 @@
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.8.0"
-    id("org.jetbrains.intellij") version "1.13.0"
+    id("org.jetbrains.kotlin.jvm") version "1.9.22"
+    id("org.jetbrains.intellij") version "1.17.0"
 }
 
 group = "com.github.autocommiter"
@@ -12,9 +12,8 @@ repositories {
 }
 
 intellij {
-    version.set("2023.3.3")
-    type.set("IU")
-    plugins.set(listOf("Git4Idea"))
+    version.set("2024.1")
+    type.set("IC")
 }
 
 tasks {

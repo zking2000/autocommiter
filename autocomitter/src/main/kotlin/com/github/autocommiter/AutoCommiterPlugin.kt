@@ -2,20 +2,15 @@ package com.github.autocommiter
 
 import com.intellij.openapi.fileEditor.FileDocumentManagerListener
 import com.intellij.openapi.vfs.VirtualFile
-import git4idea.GitUtil
-import git4idea.commands.Git
-import git4idea.commands.GitCommand
-import git4idea.commands.GitLineHandler
 import com.intellij.openapi.project.ProjectManager
 import java.io.File
-import com.intellij.openapi.vcs.VcsRoot
-import git4idea.repo.GitRepository
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import com.intellij.openapi.vfs.VfsUtil
 
 class AutoCommiterPlugin : FileDocumentManagerListener {
     private val LOG = Logger.getInstance(AutoCommiterPlugin::class.java)
@@ -45,14 +40,13 @@ class AutoCommiterPlugin : FileDocumentManagerListener {
                         LOG.info("Processing file: ${file.path}")
                         
                         // 获取Git根目录
-                        val gitRepository = GitUtil.getRepositoryManager(project).getRepositoryForFile(file)
-                        val gitDir = gitRepository?.root ?: run {
+                        val gitDir = findGitRoot(File(file.path)) ?: run {
                             LOG.info("No git repository found for file")
                             return
                         }
 
                         // 检查.autocommiter文件是否存在
-                        val autoCommiterFile = File(gitDir.path, ".autocommiter")
+                        val autoCommiterFile = File(gitDir, ".autocommiter")
                         if (!autoCommiterFile.exists()) {
                             LOG.info(".autocommiter file not found in ${gitDir.path}")
                             return
@@ -60,20 +54,15 @@ class AutoCommiterPlugin : FileDocumentManagerListener {
 
                         // Git add
                         LOG.info("Executing git add")
-                        val addHandler = GitLineHandler(project, gitDir, GitCommand.ADD)
-                        addHandler.addParameters(file.path)
-                        Git.getInstance().runCommand(addHandler).throwOnError()
+                        executeGitCommand(gitDir, "add", file.path)
 
                         // Git commit
                         LOG.info("Executing git commit")
-                        val commitHandler = GitLineHandler(project, gitDir, GitCommand.COMMIT)
-                        commitHandler.addParameters("-m", "Auto commit: ${file.name}")
-                        Git.getInstance().runCommand(commitHandler).throwOnError()
+                        executeGitCommand(gitDir, "commit", "-m", "Auto commit: ${file.name}")
 
                         // Git push
                         LOG.info("Executing git push")
-                        val pushHandler = GitLineHandler(project, gitDir, GitCommand.PUSH)
-                        Git.getInstance().runCommand(pushHandler).throwOnError()
+                        executeGitCommand(gitDir, "push")
                         
                         LOG.info("Auto commit and push completed successfully")
                     } catch (e: Exception) {
@@ -82,6 +71,36 @@ class AutoCommiterPlugin : FileDocumentManagerListener {
                 }
             }
         )
+    }
+
+    private fun findGitRoot(file: File): File? {
+        var current = file.parentFile
+        while (current != null) {
+            if (File(current, ".git").exists()) {
+                return current
+            }
+            current = current.parentFile
+        }
+        return null
+    }
+
+    private fun executeGitCommand(workingDir: File, vararg command: String) {
+        val fullCommand = listOf("git") + command
+        val process = ProcessBuilder(fullCommand)
+            .directory(workingDir)
+            .redirectErrorStream(true)
+            .start()
+
+        val reader = BufferedReader(InputStreamReader(process.inputStream))
+        var line: String?
+        while (reader.readLine().also { line = it } != null) {
+            LOG.info("Git output: $line")
+        }
+
+        val exitCode = process.waitFor()
+        if (exitCode != 0) {
+            throw RuntimeException("Git command failed with exit code $exitCode")
+        }
     }
 
     private val Document.virtualFile: VirtualFile?
