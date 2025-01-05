@@ -1,3 +1,4 @@
+```
 IntelliJ IDEA 2024.1.7 (Ultimate Edition)
 Build #IU-241.19416.15, built on October 16, 2024
 Licensed to cat method
@@ -17,3 +18,4 @@ Non-Bundled Plugins:
   com.github.copilot (1.5.30-231)
   com.github.autocommiter (1.0-SNAPSHOT)
 Kotlin: 241.19416.15-IJ
+```
