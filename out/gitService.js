@@ -11,6 +11,7 @@ class GitService {
     constructor() {
         this.isWindows = process.platform === 'win32';
         this.output = vscode.window.createOutputChannel('Auto Commiter');
+        this.operationQueue = Promise.resolve();
     }
     async findGitRoot(filePath) {
         let current = path.dirname(filePath);
@@ -32,10 +33,22 @@ class GitService {
     }
     async executeGitCommand(cwd, ...args) {
         const gitCommand = this.getGitCommand();
-        const command = [gitCommand, ...args.map(arg => `"${arg.replace(/"/g, '\\"')}"`)].join(' ');
-        this.output.appendLine(`Executing: ${command} in ${cwd}`);
+        // 对参数进行适当的转义和引用
+        const escapedArgs = args.map(arg => {
+            // 对于 Windows 路径，将反斜杠转换为正斜杠
+            if (this.isWindows) {
+                arg = arg.replace(/\\/g, '/');
+            }
+            // 如果参数包含空格，用双引号包裹
+            if (arg.includes(' ')) {
+                return `"${arg.replace(/"/g, '\\"')}"`;
+            }
+            return arg;
+        });
+        const commandLine = `${gitCommand} ${escapedArgs.join(' ')}`;
+        this.output.appendLine(`Executing: ${commandLine} in ${cwd}`);
         try {
-            const { stdout, stderr } = await execAsync(command, {
+            const { stdout, stderr } = await execAsync(commandLine, {
                 cwd,
                 env: {
                     ...process.env,
@@ -43,7 +56,9 @@ class GitService {
                     LC_ALL: 'en_US.UTF-8',
                     GIT_TERMINAL_PROMPT: '0',
                     GIT_ASKPASS: this.isWindows ? 'git-gui--askpass' : undefined
-                }
+                },
+                windowsHide: true,
+                maxBuffer: 10 * 1024 * 1024
             });
             if (stderr) {
                 this.output.appendLine(`stderr: ${stderr}`);
@@ -59,13 +74,19 @@ class GitService {
             throw err;
         }
     }
-    async processGitOperations(file) {
+    async processGitOperations(file, changeType) {
+        // 使用队列确保操作按顺序执行
+        this.operationQueue = this.operationQueue.then(() => this.doProcessGitOperations(file, changeType));
+    }
+    async doProcessGitOperations(file, changeType) {
         try {
             const gitRoot = await this.findGitRoot(file.fsPath);
             if (!gitRoot) {
                 this.output.appendLine('No git repository found');
                 return;
             }
+            // 获取相对于 git 仓库根目录的文件路径
+            const relativePath = path.relative(gitRoot, file.fsPath);
             // 检查 .autocommiter 文件
             const autoCommiterFile = path.join(gitRoot, '.autocommiter');
             if (!fs.existsSync(autoCommiterFile)) {
@@ -82,8 +103,20 @@ class GitService {
                 vscode.window.showErrorMessage('Git user configuration not found. Please configure git user.name and user.email');
                 return;
             }
-            // Git add
-            await this.executeGitCommand(gitRoot, 'add', file.fsPath);
+            if (changeType === 'deleted') {
+                try {
+                    // 对于删除的文件，使用 git rm，使用相对路径
+                    await this.executeGitCommand(gitRoot, 'rm', relativePath);
+                }
+                catch (error) {
+                    // 如果文件已经被删除，尝试直接添加更改
+                    await this.executeGitCommand(gitRoot, 'add', relativePath);
+                }
+            }
+            else {
+                // 对于修改的文件，使用 git add，使用相对路径
+                await this.executeGitCommand(gitRoot, 'add', relativePath);
+            }
             // 检查是否有更改
             try {
                 await this.executeGitCommand(gitRoot, 'diff', '--staged', '--quiet');
@@ -94,8 +127,10 @@ class GitService {
                 // 如果有更改，git diff 会返回非零退出码
             }
             // Git commit
-            const commitMessage = `Auto commit: ${path.basename(file.fsPath)}`;
-            await this.executeGitCommand(gitRoot, 'commit', '-m', commitMessage);
+            const action = changeType === 'deleted' ? 'Delete' : 'Update';
+            const fileName = path.basename(file.fsPath);
+            await this.executeGitCommand(gitRoot, 'commit', '-m', `APICLOUD-1234 - Auto ${action.toLowerCase()}: ${fileName}` // 作为单个参数传递
+            );
             // 检查远程仓库
             try {
                 await this.executeGitCommand(gitRoot, 'remote', 'get-url', 'origin');

@@ -28,14 +28,27 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage(`Auto Commiter ${!enabled ? 'enabled' : 'disabled'}`);
     });
 
-    // 监听文件保存事件
+    // 监听文件保存和删除事件
+    let fileSystemWatcher = vscode.workspace.createFileSystemWatcher('**/*');
+    
+    // 文件保存事件
     let saveListener = vscode.workspace.onDidSaveTextDocument(async (document) => {
         const enabled = vscode.workspace.getConfiguration('autocommiter').get('enabled', true);
         if (!enabled) {
             return;
         }
 
-        await gitService.processGitOperations(document.uri);
+        await gitService.processGitOperations(document.uri, 'modified');
+    });
+
+    // 文件删除事件
+    let deleteListener = fileSystemWatcher.onDidDelete(async (uri) => {
+        const enabled = vscode.workspace.getConfiguration('autocommiter').get('enabled', true);
+        if (!enabled) {
+            return;
+        }
+
+        await gitService.processGitOperations(uri, 'deleted');
     });
 
     // 监听配置变化
@@ -47,7 +60,12 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    context.subscriptions.push(toggleCommand, saveListener);
+    context.subscriptions.push(
+        toggleCommand, 
+        saveListener, 
+        deleteListener, 
+        fileSystemWatcher
+    );
     updateStatusBar(); // 初始化状态栏
 }
 
